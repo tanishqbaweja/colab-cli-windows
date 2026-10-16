@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import sys
+import urllib.error
+import urllib.parse
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,3 +73,72 @@ def test_logout_refuses_to_modify_adc(mock_common_state, capsys):
     assert _run(["colab", "--auth=adc", "logout"]) == 1
     captured = capsys.readouterr()
     assert "managed outside colab-cli" in (captured.out + captured.err)
+
+
+def test_logout_revoke_revokes_refresh_token_then_removes_cache(
+    mock_common_state, tmp_path, capsys
+):
+    token_path = tmp_path / "token.json"
+    token_path.write_text(
+        '{"token":"TEST-ACCESS","refresh_token":"TEST-REFRESH"}', encoding="utf-8"
+    )
+    mock_common_state.auth_provider = AuthProvider.OAUTH2
+
+    response = MagicMock()
+    response.status = 200
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+
+    with patch("colab_cli.auth.TOKEN_CONFIG_PATH", str(token_path)):
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            assert _run(["colab", "logout", "--revoke"]) == 0
+
+    assert not token_path.exists()
+    request = urlopen.call_args.args[0]
+    body = urllib.parse.parse_qs(request.data.decode("utf-8"))
+    assert body == {"token": ["TEST-REFRESH"]}
+    assert "revoked at Google" in capsys.readouterr().out
+
+
+def test_logout_revoke_uses_access_token_when_no_refresh_token(
+    mock_common_state, tmp_path
+):
+    token_path = tmp_path / "token.json"
+    token_path.write_text('{"token":"TEST-ACCESS"}', encoding="utf-8")
+    mock_common_state.auth_provider = AuthProvider.OAUTH2
+
+    response = MagicMock()
+    response.status = 200
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+
+    with patch("colab_cli.auth.TOKEN_CONFIG_PATH", str(token_path)):
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            assert _run(["colab", "logout", "--revoke"]) == 0
+
+    request = urlopen.call_args.args[0]
+    body = urllib.parse.parse_qs(request.data.decode("utf-8"))
+    assert body == {"token": ["TEST-ACCESS"]}
+    assert not token_path.exists()
+
+
+def test_logout_revoke_failure_keeps_local_credentials(
+    mock_common_state, tmp_path, capsys
+):
+    token_path = tmp_path / "token.json"
+    token_path.write_text(
+        '{"token":"TEST-ACCESS","refresh_token":"TEST-REFRESH"}', encoding="utf-8"
+    )
+    mock_common_state.auth_provider = AuthProvider.OAUTH2
+
+    with patch("colab_cli.auth.TOKEN_CONFIG_PATH", str(token_path)):
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            assert _run(["colab", "logout", "--revoke"]) == 1
+
+    assert token_path.exists()
+    captured = capsys.readouterr()
+    assert "revocation failed" in (captured.out + captured.err).lower()
+    assert "kept" in (captured.out + captured.err).lower()

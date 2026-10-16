@@ -52,6 +52,7 @@ PUBLIC_SCOPES = [
 
 
 TOKEN_CONFIG_PATH = os.path.expanduser("~/.config/colab-cli/token.json")
+OAUTH_REVOCATION_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 
 
 def clear_oauth_credentials() -> bool:
@@ -66,6 +67,56 @@ def clear_oauth_credentials() -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def revoke_oauth_credentials() -> bool:
+    """Revoke the cached Google OAuth grant, then remove the local token.
+
+    Returns False when no local OAuth credentials exist. When credentials are
+    present, the refresh token is preferred because revoking it invalidates the
+    reusable grant; the access token is used as a fallback. The local cache is
+    only deleted after Google accepts the revocation request, so a transient
+    network failure remains retryable.
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    if not os.path.exists(TOKEN_CONFIG_PATH):
+        return False
+
+    try:
+        with open(TOKEN_CONFIG_PATH, "r", encoding="utf-8") as token_file:
+            token_data = json.load(token_file)
+    except (OSError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"Could not read the cached OAuth credentials: {e}") from e
+
+    token = token_data.get("refresh_token") or token_data.get("token")
+    if not token:
+        raise RuntimeError(
+            "Cached OAuth credentials contain neither a refresh token nor an access token."
+        )
+
+    payload = urllib.parse.urlencode({"token": token}).encode("utf-8")
+    request = urllib.request.Request(
+        OAUTH_REVOCATION_ENDPOINT,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = getattr(response, "status", 200)
+            if status != 200:
+                raise RuntimeError(f"Google OAuth revocation returned HTTP {status}.")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Google OAuth revocation returned HTTP {e.code}.") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Google OAuth revocation request failed: {e.reason}") from e
+
+    clear_oauth_credentials()
+    return True
 
 # Remote copy-paste OAuth flow.
 #

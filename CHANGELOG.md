@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The package version is derived from the git tag via `hatch-vcs`; each release
 below corresponds to a tag of the same name.
 
+## [0.1.2] - 2026-10-16
+
+### Added
+
+- **auth:** Add `colab logout --revoke` to revoke the cached Google OAuth grant
+  server-side before deleting the local credential cache. Failed revocation
+  leaves the local credentials intact so the user can retry.
+
 ## [0.1.1] - 2026-10-16
 
 ### Added

@@ -44,9 +44,10 @@ To explicitly authenticate, switch Google accounts, or log out:
 colab login
 colab login --force
 colab logout
+colab logout --revoke
 ```
 
-`colab login --force` clears the locally cached OAuth token before starting a fresh consent flow, making it the simplest way to switch accounts. ADC credentials remain externally managed and are not deleted by `colab logout`.
+`colab login --force` clears the locally cached OAuth token before starting a fresh consent flow, making it the simplest way to switch accounts. Plain `colab logout` is local-only; `colab logout --revoke` first asks Google to invalidate the cached OAuth grant and deletes the local cache only after that succeeds. ADC credentials remain externally managed.
 
 ## Windows compatibility changes
 

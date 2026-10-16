@@ -105,6 +105,14 @@ colab logout
 
 `colab logout` removes only the Colab CLI's local OAuth token. It does not sign the account out of your browser or modify Application Default Credentials managed by Google Cloud tooling.
 
+To invalidate the cached OAuth grant at Google as well as remove it locally:
+
+```powershell
+colab logout --revoke
+```
+
+If server-side revocation fails, the local credentials are kept so you can retry instead of losing the only token that can be revoked.
+
 Create a T4 GPU runtime:
 
 ```powershell
@@ -179,7 +187,7 @@ The port has been exercised end-to-end with the native Windows CLI:
 
 Repository validation at the time of the Windows port:
 
-- **358 tests passed**
+- **361 tests passed**
 - **3 tests skipped** for platform/test-runner-specific terminal behavior
 - **Ruff passed**
 

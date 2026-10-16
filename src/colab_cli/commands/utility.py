@@ -339,9 +339,25 @@ def login(
         typer.echo("[colab] Application Default Credentials are available.")
 
 
-def logout():
+def logout(
+    revoke: Annotated[
+        bool,
+        typer.Option(
+            "--revoke",
+            help=(
+                "Revoke the cached OAuth grant at Google before removing the local "
+                "credential cache."
+            ),
+        ),
+    ] = False,
+):
     """Log out of the locally managed Colab OAuth2 account."""
-    from colab_cli.auth import AuthProvider, TOKEN_CONFIG_PATH, clear_oauth_credentials
+    from colab_cli.auth import (
+        AuthProvider,
+        TOKEN_CONFIG_PATH,
+        clear_oauth_credentials,
+        revoke_oauth_credentials,
+    )
 
     if state.auth_provider == AuthProvider.ADC:
         typer.echo(
@@ -351,7 +367,24 @@ def logout():
         )
         raise typer.Exit(code=1)
 
-    if clear_oauth_credentials():
+    if revoke:
+        try:
+            revoked = revoke_oauth_credentials()
+        except Exception as e:
+            typer.echo(f"[colab] OAuth revocation failed: {e}", err=True)
+            typer.echo(
+                "[colab] Local credentials were kept so you can retry the revocation.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        if revoked:
+            typer.echo(
+                "[colab] OAuth credentials revoked at Google and local credentials removed."
+            )
+        else:
+            typer.echo("[colab] Already logged out; no local OAuth credentials were found.")
+    elif clear_oauth_credentials():
         typer.echo("[colab] Logged out. Local OAuth credentials were removed.")
     else:
         typer.echo("[colab] Already logged out; no local OAuth credentials were found.")
