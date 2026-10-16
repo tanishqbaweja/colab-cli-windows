@@ -53,6 +53,20 @@ PUBLIC_SCOPES = [
 
 TOKEN_CONFIG_PATH = os.path.expanduser("~/.config/colab-cli/token.json")
 
+
+def clear_oauth_credentials() -> bool:
+    """Remove the locally cached OAuth2 credentials.
+
+    Returns True when a token file existed and was removed, or False when the
+    user was already logged out. This intentionally does not touch ADC, which
+    is managed externally by Google Cloud tooling/environment configuration.
+    """
+    try:
+        os.remove(TOKEN_CONFIG_PATH)
+        return True
+    except FileNotFoundError:
+        return False
+
 # Remote copy-paste OAuth flow.
 #
 # We deliberately do NOT use a localhost redirect (`run_local_server`) or the

@@ -304,6 +304,61 @@ def whoami():
         typer.echo("Scopes:        <none>")
 
 
+def login(
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Discard the cached OAuth login first so you can choose a different Google account.",
+        ),
+    ] = False,
+):
+    """Authenticate the Colab CLI.
+
+    With the default OAuth2 provider, `--force` is the account-switching path:
+    it clears the locally cached token and immediately starts a fresh Google
+    consent flow. ADC credentials are managed externally and are never deleted
+    by this command.
+    """
+    from colab_cli.auth import AuthProvider, clear_oauth_credentials, get_credentials
+
+    provider = state.auth_provider
+    if provider == AuthProvider.OAUTH2 and force:
+        clear_oauth_credentials()
+
+    try:
+        get_credentials(state.client_oauth_config, provider=provider)
+    except Exception as e:
+        typer.echo(f"[colab] Login failed: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    if provider == AuthProvider.OAUTH2:
+        typer.echo("[colab] Logged in with OAuth2.")
+    else:
+        typer.echo("[colab] Application Default Credentials are available.")
+
+
+def logout():
+    """Log out of the locally managed Colab OAuth2 account."""
+    from colab_cli.auth import AuthProvider, TOKEN_CONFIG_PATH, clear_oauth_credentials
+
+    if state.auth_provider == AuthProvider.ADC:
+        typer.echo(
+            "[colab] ADC credentials are managed outside colab-cli. "
+            "Use your Google Cloud credential tooling to change or revoke them.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if clear_oauth_credentials():
+        typer.echo("[colab] Logged out. Local OAuth credentials were removed.")
+    else:
+        typer.echo("[colab] Already logged out; no local OAuth credentials were found.")
+
+    typer.echo(f"[colab] Credential cache: {TOKEN_CONFIG_PATH}")
+
+
 def version_command():
     """Show the version of the Colab CLI"""
     typer.echo(f"Version: {get_app_version()}")
@@ -393,6 +448,8 @@ def register(app: typer.Typer):
     app.command(name="url")(url)
     app.command(name="version")(version_command)
     app.command(name="update")(update_command)
+    app.command(name="login")(login)
+    app.command(name="logout")(logout)
     # Developer-only debugging aid; hidden from `colab --help` but still
     # reachable via `colab whoami` / `colab whoami --help`.
     app.command(name="whoami", hidden=True)(whoami)

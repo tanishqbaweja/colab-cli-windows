@@ -105,6 +105,8 @@ def callback(
         "help",
         "url",
         "whoami",
+        "login",
+        "logout",
         "readme",
         "README",
         "skill",

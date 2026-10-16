@@ -38,6 +38,16 @@ colab --help
 colab ssh --help
 ```
 
+To explicitly authenticate, switch Google accounts, or log out:
+
+```powershell
+colab login
+colab login --force
+colab logout
+```
+
+`colab login --force` clears the locally cached OAuth token before starting a fresh consent flow, making it the simplest way to switch accounts. ADC credentials remain externally managed and are not deleted by `colab logout`.
+
 ## Windows compatibility changes
 
 The port keeps upstream behavior and adds Windows-specific handling for:

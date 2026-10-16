@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The package version is derived from the git tag via `hatch-vcs`; each release
 below corresponds to a tag of the same name.
 
+## [0.1.1] - 2026-10-16
+
+### Added
+
+- **auth:** Add `colab login` for explicit authentication.
+- **auth:** Add `colab login --force` to clear the cached OAuth token and start
+  a fresh consent flow for switching Google accounts.
+- **auth:** Add `colab logout` to remove locally managed OAuth credentials
+  without touching externally managed Application Default Credentials.
+
 ## [0.7.1] - 2026-09-14
 
 ### Fixed

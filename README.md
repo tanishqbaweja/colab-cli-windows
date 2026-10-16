@@ -85,10 +85,25 @@ No drive letter, Windows username, or checkout location is assumed.
 Authenticate and list sessions:
 
 ```powershell
+colab login
 colab sessions
 ```
 
 On first use, the CLI prints a Google authorization URL. Complete the consent flow and paste the returned authorization code into the terminal.
+
+Switch to a different Google account in one step:
+
+```powershell
+colab login --force
+```
+
+Log out of the locally managed OAuth account:
+
+```powershell
+colab logout
+```
+
+`colab logout` removes only the Colab CLI's local OAuth token. It does not sign the account out of your browser or modify Application Default Credentials managed by Google Cloud tooling.
 
 Create a T4 GPU runtime:
 
@@ -164,7 +179,7 @@ The port has been exercised end-to-end with the native Windows CLI:
 
 Repository validation at the time of the Windows port:
 
-- **354 tests passed**
+- **358 tests passed**
 - **3 tests skipped** for platform/test-runner-specific terminal behavior
 - **Ruff passed**
 
