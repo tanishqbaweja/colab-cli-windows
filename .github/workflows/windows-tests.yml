@@ -2,6 +2,8 @@ name: Windows tests
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:
