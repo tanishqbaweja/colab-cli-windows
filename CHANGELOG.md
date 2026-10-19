@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The package version is derived from the git tag via `hatch-vcs`; each release
 below corresponds to a tag of the same name.
 
+## [0.2.1] - 2026-10-19
+
+### Fixed
+
+- **parallel:** Accept JSON manifests saved as UTF-8 with a BOM, including the
+  default UTF-8 output produced by Windows PowerShell 5.
+- **cli:** Suppress the unrelated update banner for `parallel` so job output is
+  not polluted before the manifest runs.
+
 ## [0.2.0] - 2026-10-19
 
 ### Added

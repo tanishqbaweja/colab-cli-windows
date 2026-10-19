@@ -52,3 +52,24 @@ def test_parallel_manifest_runs_all_jobs(tmp_path):
 
     with patch.object(parallel, "_run_job", side_effect=fake_run_job):
         parallel.parallel(str(manifest), max_workers=2, timeout=None)
+
+
+def test_parallel_manifest_accepts_utf8_bom(tmp_path):
+    manifest = tmp_path / "jobs-bom.json"
+    manifest.write_text(
+        json.dumps(
+            {"jobs": [{"name": "a", "profile": "one", "args": ["version"]}]}
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = {
+        "index": 0,
+        "name": "a",
+        "profile": "one",
+        "returncode": 0,
+        "stdout": "Version: test",
+        "stderr": "",
+    }
+    with patch.object(parallel, "_run_job", return_value=result):
+        parallel.parallel(str(manifest), max_workers=1, timeout=None)

@@ -136,6 +136,7 @@ def callback(
         "logout",
         "profiles",
         "profile",
+        "parallel",
         "t4-usage",
         "readme",
         "README",

@@ -271,7 +271,7 @@ The port has been exercised end-to-end with the native Windows CLI:
 
 Repository validation at the time of the Windows port:
 
-- **376 tests passed**
+- **377 tests passed**
 - **3 tests skipped** for platform/test-runner-specific terminal behavior
 - **Ruff passed**
 

@@ -67,7 +67,9 @@ def parallel(
     """Run explicitly profiled CLI jobs concurrently."""
     path = Path(manifest)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # ``utf-8-sig`` accepts ordinary UTF-8 and the BOM-prefixed UTF-8
+        # commonly written by Windows PowerShell 5's ``Set-Content -Encoding UTF8``.
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception as e:
         typer.echo(f"[colab] Could not read parallel manifest: {e}", err=True)
         raise typer.Exit(2)
