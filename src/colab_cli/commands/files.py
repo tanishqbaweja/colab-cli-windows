@@ -16,12 +16,33 @@ import click
 import hashlib
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import typer
 from typing import Optional
 from typing_extensions import Annotated
 
 from colab_cli.contents import ContentsClient
+
+
+def _launch_editor(local_path: str) -> None:
+    """Open *local_path* in the configured editor.
+
+    Click splits ``EDITOR``/``VISUAL`` with POSIX shell rules even on Windows,
+    which strips backslashes from paths such as ``C:\\tools\\editor.cmd`` and
+    cannot directly launch ``.cmd``/``.bat`` wrappers through CreateProcess.
+    When a Windows editor command is explicitly configured, let ``cmd.exe``
+    parse that native command line instead.  With no configured editor we keep
+    Click's normal platform-specific editor discovery (for example Notepad).
+    """
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if os.name == "nt" and editor:
+        quoted_path = subprocess.list2cmdline([local_path])
+        completed = subprocess.run(f"{editor} {quoted_path}", shell=True, check=False)
+        if completed.returncode != 0:
+            raise click.ClickException(f"{editor}: Editing failed")
+        return
+    click.edit(filename=local_path)
 
 
 def ls(
@@ -171,7 +192,7 @@ def edit(
 
         hash_before = get_file_hash(local_path)
 
-        click.edit(filename=local_path)
+        _launch_editor(local_path)
 
         hash_after = get_file_hash(local_path)
 

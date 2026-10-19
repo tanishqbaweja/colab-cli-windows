@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import typer
 from typing_extensions import Annotated
 
+from colab_cli.auth import AuthProvider
 from colab_cli.consumption import format_consumption_status
 from colab_cli.profiles import list_profiles
 from colab_cli.t4_usage import T4UsageTracker, format_duration
@@ -55,13 +58,18 @@ def t4_usage(
     from colab_cli.common import state
 
     if not all_profiles:
-        try:
-            assignments = state.client.list_assignments()
-            state.t4_usage.reconcile(assignments)
-        except Exception:
-            # The local tracker remains useful offline; do not turn a display
-            # command into a login prompt/error solely for reconciliation.
-            pass
+        can_reconcile = (
+            state.auth_provider != AuthProvider.OAUTH2
+            or os.path.exists(state.token_path)
+        )
+        if can_reconcile:
+            try:
+                assignments = state.client.list_assignments()
+                state.t4_usage.reconcile(assignments)
+            except Exception:
+                # The local tracker remains useful offline; do not turn a display
+                # command into an authentication/error path solely for reconciliation.
+                pass
         _print_t4_snapshot(state.profile, state.t4_usage.snapshot())
         return
 

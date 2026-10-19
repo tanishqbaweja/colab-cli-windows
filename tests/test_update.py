@@ -231,6 +231,19 @@ def test_background_check_includes_disable_hint(app_version, fake_settings, mock
     assert '"enable_update_check": false' in result.output
 
 
+def test_background_update_check_can_be_disabled_by_frontend_env(
+    monkeypatch, mocker, mock_common_state
+):
+    monkeypatch.setenv("COLAB_CLI_DISABLE_AUTO_UPDATE", "1")
+    check = mocker.patch("colab_cli.auto_update.run_background_check")
+    mock_common_state.client.list_assignments.return_value = []
+
+    result = runner.invoke(app, ["sessions"])
+
+    assert result.exit_code == 0
+    check.assert_not_called()
+
+
 def test_cached_banner_includes_disable_hint(mocker, app_version, fake_settings):
     """The cached banner shown between fetches is unsolicited; include the hint."""
     app_version("1.0.0")

@@ -29,8 +29,27 @@ def _transform_plain(text: str, name: str, label: str, prefix: str) -> str:
         if value:
             text = text.replace(value, "%USERPROFILE%")
 
+    # Update messages are special: the backend may recommend reinstalling from
+    # a local source path whose directory happens to contain the backend's
+    # package name. Blind brand substitution inside that path would produce a
+    # command that does not exist. Present a neutral, valid frontend command
+    # instead and describe the version as the runtime engine version.
+    text = text.replace(
+        "[colab] A new version of Colab CLI is available:",
+        f"[{prefix}] A runtime engine update is available:",
+    )
+    text = re.sub(
+        r"\[colab\] Run '[^'\r\n]+' to update\.",
+        f"[{prefix}] Run '{name} update --install' to update.",
+        text,
+    )
+
     text = text.replace("[colab]", f"[{prefix}]")
     text = text.replace("Google Colab", "Runtime Service")
+    text = text.replace("Google Drive", "cloud drive")
+    text = text.replace("Google account", "provider account")
+    text = text.replace("Google consent flow", "provider consent flow")
+    text = text.replace("X-Colab-Ssh-Pubkey", "X-Runtime-Ssh-Pubkey")
     text = text.replace("Colab CLI", label)
     text = text.replace("google-colab-cli", name)
     text = text.replace("colab-cli", name)
@@ -50,7 +69,15 @@ def transform_text(text: str, name: str, label: str, prefix: str) -> str:
     parts = _PROTECTED.split(text)
     for index in range(0, len(parts), 2):
         parts[index] = _transform_plain(parts[index], name, label, prefix)
-    return "".join(parts)
+    result = "".join(parts)
+    # Functional commands such as ``url`` must emit the real provider URL so
+    # it remains usable. Help text, however, can present a neutral placeholder
+    # without changing the actual default passed to the command.
+    if os.environ.get("COLAB_CLI_FRONTEND_HIDE_PROVIDER_URLS") == "1":
+        result = result.replace(
+            "https://colab.research.google.com", "https://<runtime-service>"
+        )
+    return result
 
 
 class _FrontendStream:

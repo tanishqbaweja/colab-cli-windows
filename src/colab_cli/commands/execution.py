@@ -17,6 +17,7 @@ import nbformat
 import os
 import re
 import sys
+import time
 import typer
 import uuid
 from nbformat.v4 import new_output
@@ -32,10 +33,63 @@ _console = Console()
 
 TITLE_REGEX = re.compile(r"^\s*#\s*@title\s+(.*)", re.MULTILINE)
 ENV_KEY_REGEX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CONTENT_WORKDIR_CODE = (
+    "import os; os.makedirs('/content', exist_ok=True); os.chdir('/content')"
+)
+_TRANSIENT_CONNECTION_MARKERS = (
+    "connection was lost",
+    "websocket closed",
+    "connection reset",
+    "connection aborted",
+    "broken pipe",
+    "read timed out",
+    "connect timed out",
+    "connection timed out",
+    "timed out",
+)
+
+
+def _is_transient_connection_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in _TRANSIENT_CONNECTION_MARKERS)
+
+
+def _ensure_content_workdir(runtime: ColabRuntime, retries: int = 2):
+    """Run the idempotent /content setup, reconnecting on transient WS loss.
+
+    Only this setup prelude is retried. User code is never automatically
+    replayed because doing so could duplicate side effects if the connection
+    disappears after the kernel has already started executing it.
+    """
+    for attempt in range(retries + 1):
+        try:
+            return runtime.execute_code(_CONTENT_WORKDIR_CODE)
+        except Exception as e:
+            transient = _is_transient_connection_error(e)
+            if not transient or attempt >= retries:
+                raise
+            runtime.reconnect()
+            time.sleep(attempt + 1)
 
 
 def is_stdin_tty():
     return sys.stdin.isatty()
+
+
+def _read_stdin_code() -> str:
+    """Read piped code while tolerating BOMs emitted by Windows shells.
+
+    Windows PowerShell / host bridges can prefix native-command stdin with a
+    Unicode BOM.  Passing that marker through to IPython makes otherwise-valid
+    Python fail with ``SyntaxError: invalid character``.  Strip only a leading
+    BOM (including the common mojibake form) and leave the rest untouched.
+    """
+    code = sys.stdin.read()
+    if code.startswith("\ufeff"):
+        return code[1:]
+    if code.startswith("ï»¿"):
+        return code[3:]
+    return code
 
 
 def _parse_env_vars(env: Optional[List[str]]) -> dict[str, str]:
@@ -191,7 +245,7 @@ def exec_command(
         if is_stdin_tty():
             typer.echo("[colab] Error: No input provided. Pipe code or provide a file.")
             raise typer.Exit(1)
-        code_blocks.append({"code": sys.stdin.read(), "id": None})
+        code_blocks.append({"code": _read_stdin_code(), "id": None})
 
     if not any(b["code"].strip() for b in code_blocks):
         raise typer.Exit(0)
@@ -214,15 +268,20 @@ def exec_command(
     )
     try:
         # Ensure we are in /content which is the standard Colab working directory
-        runtime.execute_code(
-            "import os; os.makedirs('/content', exist_ok=True); os.chdir('/content')"
-        )
+        _ensure_content_workdir(runtime)
     except Exception as e:
         if is_terminal_error(e):
             typer.echo(
                 f"[colab] Session '{name}' appears to be lost (404/401). Cleaning up."
             )
             state.prune_session(name)
+            raise typer.Exit(1)
+        if _is_transient_connection_error(e):
+            typer.echo(
+                f"[colab] Session '{name}' is not ready for code execution after "
+                "repeated connection timeouts. Try again shortly.",
+                err=True,
+            )
             raise typer.Exit(1)
         raise e
 
@@ -315,9 +374,7 @@ def repl(
     )
     try:
         # Ensure we are in /content which is the standard Colab working directory
-        runtime.execute_code(
-            "import os; os.makedirs('/content', exist_ok=True); os.chdir('/content')"
-        )
+        _ensure_content_workdir(runtime)
     except Exception as e:
         if is_terminal_error(e):
             typer.echo(
@@ -328,7 +385,7 @@ def repl(
         raise e
 
     if not is_stdin_tty():
-        code = sys.stdin.read()
+        code = _read_stdin_code()
         if not code.strip():
             raise typer.Exit(0)
 

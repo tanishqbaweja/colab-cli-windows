@@ -276,3 +276,13 @@ class ColabRuntime:
                     self._kernel_client._manager.shutdown_kernel(now=True)
             except Exception:
                 logging.exception("Error stopping kernel client")
+
+    def reconnect(self):
+        """Drop the local websocket client so the next operation reconnects.
+
+        The remote kernel is intentionally preserved.  This is useful after a
+        transient websocket loss during an idempotent setup operation: callers
+        can reconnect without restarting the kernel or duplicating user code.
+        """
+        self.stop(shutdown_kernel=False)
+        self._kernel_client = None

@@ -143,7 +143,13 @@ def callback(
         "skill",
         "SKILL",
     }
-    if ctx.invoked_subcommand not in _AUTO_UPDATE_SUPPRESSED:
+    auto_update_disabled = os.environ.get("COLAB_CLI_DISABLE_AUTO_UPDATE", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not auto_update_disabled and ctx.invoked_subcommand not in _AUTO_UPDATE_SUPPRESSED:
         auto_update.run_background_check()
 
 

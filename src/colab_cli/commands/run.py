@@ -46,7 +46,11 @@ from colab_cli.client import (
     Shape,
     TooManyAssignmentsError,
 )
-from colab_cli.commands.execution import _build_env_prelude, _parse_env_vars
+from colab_cli.commands.execution import (
+    _build_env_prelude,
+    _ensure_content_workdir,
+    _parse_env_vars,
+)
 from colab_cli.commands.session import resolve_runtime_options
 from colab_cli.runtime import ColabRuntime
 from colab_cli.state import SessionState
@@ -402,10 +406,7 @@ def run_command(
     try:
         # Same /content prelude as `colab exec` for consistency.
         try:
-            runtime.execute_code(
-                "import os; os.makedirs('/content', exist_ok=True); "
-                "os.chdir('/content')"
-            )
+            _ensure_content_workdir(runtime)
         except Exception as e:
             if is_terminal_error(e):
                 typer.echo(

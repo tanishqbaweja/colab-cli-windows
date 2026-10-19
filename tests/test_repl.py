@@ -131,6 +131,26 @@ def test_cli_repl_piped(mock_runtime_class, mock_store, mock_common_state):
     mock_runtime.execute_code.assert_any_call("print(1)", output_hook=ANY)
 
 
+def test_cli_repl_piped_strips_windows_bom(
+    mock_runtime_class, mock_store, mock_common_state
+):
+    mock_session = MagicMock()
+    mock_session.name = "s1"
+    mock_session.url = "http://url"
+    mock_session.token = "token"
+    mock_session.kernel_id = None
+    mock_session.session_id = None
+    mock_store.get.return_value = mock_session
+    mock_common_state.resolve_session.return_value = "s1"
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute_code.return_value = []
+
+    result = runner.invoke(app, ["repl", "-s", "s1"], input="\ufeffprint(1)")
+
+    assert result.exit_code == 0, result.output
+    mock_runtime.execute_code.assert_any_call("print(1)", output_hook=ANY)
+
+
 def test_cli_repl_missing_session(mock_common_state):
     mock_common_state.resolve_session.side_effect = SystemExit(1)
     result = runner.invoke(app, ["repl", "-s", "missing"])

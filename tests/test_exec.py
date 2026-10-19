@@ -87,6 +87,28 @@ def test_cli_exec_stdin(mock_store, mock_runtime_class, mock_common_state):
     )
 
 
+def test_cli_exec_stdin_strips_windows_bom(
+    mock_store, mock_runtime_class, mock_common_state
+):
+    mock_session = MagicMock()
+    mock_session.name = "s1"
+    mock_session.url = "http://url"
+    mock_session.token = "token"
+    mock_session.kernel_id = None
+    mock_session.session_id = None
+    mock_store.get.return_value = mock_session
+    mock_common_state.resolve_session.return_value = "s1"
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute_code.return_value = []
+
+    result = runner.invoke(app, ["exec", "-s", "s1"], input="\ufeffprint(42)")
+
+    assert result.exit_code == 0, result.output
+    mock_runtime.execute_code.assert_any_call(
+        "print(42)", output_hook=ANY, timeout=30.0
+    )
+
+
 def test_cli_exec_env_injects_prelude(
     mock_store, mock_runtime_class, mock_common_state
 ):
@@ -274,6 +296,96 @@ def test_cli_exec_lost_session_prunes(
     assert result.exit_code == 1
     assert "appears to be lost" in result.output
     mock_common_state.prune_session.assert_called_once_with("lost-sess")
+
+
+def test_cli_exec_reconnects_when_content_prelude_loses_connection(
+    mock_store, mock_runtime_class, mock_common_state, tmp_path, mocker
+):
+    mocker.patch("colab_cli.commands.execution.time.sleep")
+    mock_session = MagicMock()
+    mock_session.url = "http://url"
+    mock_session.token = "token123"
+    mock_session.name = "s1"
+    mock_session.kernel_id = None
+    mock_session.session_id = None
+    mock_store.get.return_value = mock_session
+    mock_common_state.resolve_session.return_value = "s1"
+
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute_code.side_effect = [
+        RuntimeError("Connection was lost."),
+        [],
+        [{"text": "ok\n"}],
+    ]
+
+    script = tmp_path / "script.py"
+    script.write_text("print('ok')")
+
+    result = runner.invoke(app, ["exec", "-s", "s1", "-f", str(script)])
+
+    assert result.exit_code == 0, result.output
+    mock_runtime.reconnect.assert_called_once_with()
+    assert mock_runtime.execute_code.call_count == 3
+
+
+def test_cli_exec_reconnects_when_content_prelude_read_times_out(
+    mock_store, mock_runtime_class, mock_common_state, tmp_path, mocker
+):
+    mocker.patch("colab_cli.commands.execution.time.sleep")
+    mock_session = MagicMock()
+    mock_session.url = "http://url"
+    mock_session.token = "token123"
+    mock_session.name = "s1"
+    mock_session.kernel_id = None
+    mock_session.session_id = None
+    mock_store.get.return_value = mock_session
+    mock_common_state.resolve_session.return_value = "s1"
+
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute_code.side_effect = [
+        RuntimeError("Read timed out. (read timeout=10)"),
+        [],
+        [{"text": "ok\n"}],
+    ]
+
+    script = tmp_path / "script.py"
+    script.write_text("print('ok')")
+
+    result = runner.invoke(app, ["exec", "-s", "s1", "-f", str(script)])
+
+    assert result.exit_code == 0, result.output
+    mock_runtime.reconnect.assert_called_once_with()
+    assert mock_runtime.execute_code.call_count == 3
+
+
+def test_cli_exec_exhausted_transient_timeout_is_concise(
+    mock_store, mock_runtime_class, mock_common_state, tmp_path, mocker
+):
+    mocker.patch("colab_cli.commands.execution.time.sleep")
+    mock_session = MagicMock()
+    mock_session.url = "http://url"
+    mock_session.token = "token123"
+    mock_session.name = "s1"
+    mock_session.kernel_id = None
+    mock_session.session_id = None
+    mock_store.get.return_value = mock_session
+    mock_common_state.resolve_session.return_value = "s1"
+
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute_code.side_effect = RuntimeError(
+        "HTTPSConnectionPool(host='provider.example'): Read timed out. (read timeout=10)"
+    )
+
+    script = tmp_path / "script.py"
+    script.write_text("print('ok')")
+
+    result = runner.invoke(app, ["exec", "-s", "s1", "-f", str(script)])
+
+    assert result.exit_code == 1
+    assert "repeated connection timeouts" in result.output
+    assert "provider.example" not in result.output
+    assert mock_runtime.execute_code.call_count == 3
+    assert mock_runtime.reconnect.call_count == 2
 
 
 def test_cli_exec_timeout(mock_store, mock_runtime_class, mock_common_state, tmp_path):
