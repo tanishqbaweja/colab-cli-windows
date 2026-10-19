@@ -23,7 +23,19 @@ from typing_extensions import Annotated
 from colab_cli import auto_update
 from colab_cli.auth import AuthProvider
 from colab_cli.common import state, setup_logging
-from colab_cli.commands import session, execution, files, automation, run, ssh, utility, usage
+from colab_cli.commands import (
+    automation,
+    execution,
+    files,
+    parallel,
+    profiles,
+    run,
+    session,
+    ssh,
+    usage,
+    utility,
+)
+from colab_cli.profiles import get_default_profile, validate_profile_name
 
 
 class AlphabeticalGroup(TyperGroup):
@@ -54,7 +66,9 @@ def callback(
         typer.Option(
             "-c", "--client-oauth-config", help="Path to client OAuth config JSON file"
         ),
-    ] = os.path.expanduser("~/.colab-cli-oauth-config.json"),
+    ] = os.path.expanduser(
+        os.environ.get("COLAB_CLI_OAUTH_CONFIG", "~/.colab-cli-oauth-config.json")
+    ),
     config: Annotated[
         Optional[str],
         typer.Option(
@@ -76,14 +90,27 @@ def callback(
             case_sensitive=False,
         ),
     ] = AuthProvider.OAUTH2,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Named account profile. Uses the configured default when omitted.",
+        ),
+    ] = None,
 ):
     """
     Colab CLI global configuration.
     """
     state.client_oauth_config = client_oauth_config
-    state.config_path = config
     state.logtostderr = logtostderr
     state.auth_provider = auth
+    try:
+        selected_profile = validate_profile_name(profile or get_default_profile())
+    except ValueError as e:
+        typer.echo(f"[colab] {e}", err=True)
+        raise typer.Exit(code=2)
+    state.configure_profile(selected_profile, config_path=config)
     setup_logging(logtostderr)
 
     # Daily fetch + cached banner on every invocation.
@@ -107,6 +134,9 @@ def callback(
         "whoami",
         "login",
         "logout",
+        "profiles",
+        "profile",
+        "t4-usage",
         "readme",
         "README",
         "skill",
@@ -149,9 +179,14 @@ run.register(app)
 ssh.register(app)
 utility.register(app)
 usage.register(app)
+profiles.register(app)
+parallel.register(app)
 
 
 def main():
+    from colab_cli.frontend import configure_from_environment
+
+    configure_from_environment()
     app()
 
 

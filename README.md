@@ -113,6 +113,88 @@ colab logout --revoke
 
 If server-side revocation fails, the local credentials are kept so you can retry instead of losing the only token that can be revoked.
 
+## Multiple account profiles
+
+Named profiles keep OAuth credentials, session state, history, and local T4
+tracking separate. The existing installation remains the `default` profile.
+
+Authenticate several accounts:
+
+```powershell
+colab login --profile account1
+colab login --profile account2
+colab login --profile account3
+```
+
+List profiles and choose the default used when `--profile` is omitted:
+
+```powershell
+colab profiles
+colab profile use account2
+colab profile current
+```
+
+Every normal command can target one profile explicitly with the global option:
+
+```powershell
+colab --profile account1 new -s render-a --gpu T4
+colab --profile account2 new -s render-b --gpu T4
+colab --profile account1 exec -s render-a -f .\part1.py
+colab --profile account2 exec -s render-b -f .\part2.py
+```
+
+The command-local `--profile` option is also accepted by `login` and `logout`,
+so account management reads naturally even though global options normally come
+before the subcommand.
+
+### Parallel manifest
+
+`colab parallel` runs independent, explicitly-profiled CLI jobs concurrently.
+It does not automatically select or rotate accounts. Example `jobs.json`:
+
+```json
+{
+  "jobs": [
+    {
+      "name": "part-1",
+      "profile": "account1",
+      "args": ["run", "--gpu", "T4", "part1.py"]
+    },
+    {
+      "name": "part-2",
+      "profile": "account2",
+      "args": ["run", "--gpu", "T4", "part2.py"]
+    }
+  ]
+}
+```
+
+Run it with:
+
+```powershell
+colab parallel .\jobs.json
+```
+
+Each job's `args` are the same arguments you would normally place after
+`colab`. Nested `parallel` jobs are rejected.
+
+## Local T4 daily tracker
+
+The CLI maintains a per-profile local T4 allocation-time counter with a fixed
+display budget of **4 hours 30 minutes per local calendar day**. This is local
+accounting for planning work; it is not Google's authoritative quota or billing
+counter.
+
+```powershell
+colab --profile account1 t4-usage
+colab t4-usage --all
+```
+
+The tracker starts when this CLI allocates a T4 session and accrues continuously
+while the session is tracked as active. Session listing/status operations also
+reconcile the tracker against current server assignments. Time is split at local
+midnight so the displayed allowance resets daily.
+
 Create a T4 GPU runtime:
 
 ```powershell
@@ -184,10 +266,12 @@ The port has been exercised end-to-end with the native Windows CLI:
 - remote artifact creation and download back to Windows
 - FFmpeg H.264 NVENC export on a T4 runtime
 - session termination and cleanup
+- isolated named-account profiles and parallel explicit-profile jobs
+- per-profile local T4 daily usage accounting
 
 Repository validation at the time of the Windows port:
 
-- **361 tests passed**
+- **376 tests passed**
 - **3 tests skipped** for platform/test-runner-specific terminal behavior
 - **Ruff passed**
 

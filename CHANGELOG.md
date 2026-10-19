@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The package version is derived from the git tag via `hatch-vcs`; each release
 below corresponds to a tag of the same name.
 
+## [0.2.0] - 2026-10-19
+
+### Added
+
+- **profiles:** Named OAuth/account profiles with isolated credentials,
+  sessions, history, and local T4 accounting. Add global `--profile/-p`,
+  `colab profiles`, and `colab profile use/current/remove`.
+- **auth:** `colab login --profile NAME` and `colab logout --profile NAME`
+  convenience options while retaining global profile selection for all normal
+  commands.
+- **parallel:** Add `colab parallel MANIFEST.json` for concurrent jobs where
+  every job explicitly names its profile and ordinary CLI argument list.
+- **usage:** Add `colab t4-usage` and `colab t4-usage --all`. The local tracker
+  uses a fixed 4h30m per-profile daily planning allowance, splits intervals at
+  local midnight, and reconciles known T4 assignments when sessions are synced.
+
 ## [0.1.2] - 2026-10-16
 
 ### Added

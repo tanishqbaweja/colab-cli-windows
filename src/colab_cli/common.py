@@ -23,7 +23,15 @@ import typer
 from colab_cli.auth import AuthProvider, get_credentials
 from colab_cli.client import Client, Prod, RuntimeProxyInfo
 from colab_cli.history import HistoryLogger
+from colab_cli.profiles import (
+    DEFAULT_PROFILE,
+    config_root,
+    history_dir,
+    sessions_path,
+    token_path,
+)
 from colab_cli.state import SessionState, StateStore, SettingsStore
+from colab_cli.t4_usage import T4UsageTracker
 
 # Headroom so a token doesn't expire mid-command.
 TOKEN_REFRESH_MARGIN = timedelta(minutes=5)
@@ -41,11 +49,36 @@ class State:
         self.config_path = None
         self.logtostderr = False
         self.auth_provider = AuthProvider.OAUTH2
+        self.profile = DEFAULT_PROFILE
         self._client = None
         self._store = None
         self._settings_store = None
         self._history = None
         self._sessions = None
+        self._t4_usage = None
+
+    def configure_profile(self, profile: str, config_path: Optional[str] = None):
+        """Switch all local/auth state to one named profile."""
+        from colab_cli.profiles import ensure_profile
+
+        profile = ensure_profile(profile)
+        self.profile = profile
+        self.config_path = config_path or sessions_path(profile)
+        self._client = None
+        self._store = None
+        self._history = None
+        self._sessions = None
+        self._t4_usage = None
+
+    @property
+    def token_path(self):
+        # Preserve the legacy constant for the default profile so existing
+        # installs/tests that patch TOKEN_CONFIG_PATH keep working.
+        if self.profile == DEFAULT_PROFILE:
+            from colab_cli import auth
+
+            return auth.TOKEN_CONFIG_PATH
+        return token_path(self.profile)
 
     @property
     def store(self):
@@ -64,20 +97,31 @@ class State:
     @property
     def history(self):
         if self._history is None:
-            self._history = HistoryLogger()
+            self._history = HistoryLogger(log_dir=history_dir(self.profile))
         return self._history
+
+    @property
+    def t4_usage(self):
+        if self._t4_usage is None:
+            self._t4_usage = T4UsageTracker(self.profile)
+        return self._t4_usage
 
     @property
     def client(self):
         if self._client is None:
             creds = get_credentials(
-                self.client_oauth_config, provider=self.auth_provider
+                self.client_oauth_config,
+                provider=self.auth_provider,
+                token_path=self.token_path,
             )
             self._client = Client(Prod(), creds)
         return self._client
 
     def prune_session(self, name: str):
         """Removes a session from local state."""
+        existing = self.store.get(name)
+        if existing and existing.accelerator == "T4":
+            self.t4_usage.stop(existing.endpoint)
         self.store.remove(name)
         if self._sessions and name in self._sessions:
             del self._sessions[name]
@@ -127,6 +171,7 @@ class State:
             except SystemExit:
                 # If auth fails, we just return empty assignments
                 assignments = []
+            self.t4_usage.reconcile(assignments)
             return self._sessions, assignments
 
         assignments = self.client.list_assignments()
@@ -144,6 +189,8 @@ class State:
 
         if pruned > 0:
             typer.echo(f"[colab] Pruned {pruned} stale local session(s).")
+
+        self.t4_usage.reconcile(assignments)
 
         return self._sessions, assignments
 
@@ -192,7 +239,7 @@ def setup_logging(log_to_stderr: bool):
     requests_log.setLevel(logging.DEBUG)
     requests_log.propagate = True
 
-    log_dir = os.path.expanduser("~/.config/colab-cli")
+    log_dir = config_root()
     os.makedirs(log_dir, exist_ok=True)
     file_handler = logging.FileHandler(os.path.join(log_dir, "colab.log"))
     file_handler.setFormatter(logging.Formatter(log_format))

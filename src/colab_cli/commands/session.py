@@ -204,6 +204,8 @@ def new(
     )
 
     state.store.add(s)
+    if s.accelerator == "T4":
+        state.t4_usage.start(s.endpoint, session_name=s.name)
     state.history.log_event(
         name,
         "session_created",
@@ -343,6 +345,8 @@ def stop(
         pass
 
     state.client.unassign(s.endpoint)
+    if s.accelerator == "T4":
+        state.t4_usage.stop(s.endpoint)
     state.store.remove(name)
     state.history.log_event(name, "session_terminated", {"reason": "user_requested"})
     typer.echo("[colab] Session terminated.")

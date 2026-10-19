@@ -313,6 +313,14 @@ def login(
             help="Discard the cached OAuth login first so you can choose a different Google account.",
         ),
     ] = False,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Named account profile to authenticate.",
+        ),
+    ] = None,
 ):
     """Authenticate the Colab CLI.
 
@@ -322,19 +330,31 @@ def login(
     by this command.
     """
     from colab_cli.auth import AuthProvider, clear_oauth_credentials, get_credentials
+    from colab_cli.profiles import validate_profile_name
+
+    if profile:
+        try:
+            state.configure_profile(validate_profile_name(profile))
+        except ValueError as e:
+            typer.echo(f"[colab] {e}", err=True)
+            raise typer.Exit(code=2)
 
     provider = state.auth_provider
     if provider == AuthProvider.OAUTH2 and force:
-        clear_oauth_credentials()
+        clear_oauth_credentials(state.token_path)
 
     try:
-        get_credentials(state.client_oauth_config, provider=provider)
+        get_credentials(
+            state.client_oauth_config,
+            provider=provider,
+            token_path=state.token_path,
+        )
     except Exception as e:
         typer.echo(f"[colab] Login failed: {e}", err=True)
         raise typer.Exit(code=1)
 
     if provider == AuthProvider.OAUTH2:
-        typer.echo("[colab] Logged in with OAuth2.")
+        typer.echo(f"[colab] Logged in with OAuth2 profile '{state.profile}'.")
     else:
         typer.echo("[colab] Application Default Credentials are available.")
 
@@ -350,14 +370,29 @@ def logout(
             ),
         ),
     ] = False,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Named account profile to log out.",
+        ),
+    ] = None,
 ):
     """Log out of the locally managed Colab OAuth2 account."""
     from colab_cli.auth import (
         AuthProvider,
-        TOKEN_CONFIG_PATH,
         clear_oauth_credentials,
         revoke_oauth_credentials,
     )
+    from colab_cli.profiles import validate_profile_name
+
+    if profile:
+        try:
+            state.configure_profile(validate_profile_name(profile))
+        except ValueError as e:
+            typer.echo(f"[colab] {e}", err=True)
+            raise typer.Exit(code=2)
 
     if state.auth_provider == AuthProvider.ADC:
         typer.echo(
@@ -369,7 +404,7 @@ def logout(
 
     if revoke:
         try:
-            revoked = revoke_oauth_credentials()
+            revoked = revoke_oauth_credentials(state.token_path)
         except Exception as e:
             typer.echo(f"[colab] OAuth revocation failed: {e}", err=True)
             typer.echo(
@@ -384,12 +419,13 @@ def logout(
             )
         else:
             typer.echo("[colab] Already logged out; no local OAuth credentials were found.")
-    elif clear_oauth_credentials():
+    elif clear_oauth_credentials(state.token_path):
         typer.echo("[colab] Logged out. Local OAuth credentials were removed.")
     else:
         typer.echo("[colab] Already logged out; no local OAuth credentials were found.")
 
-    typer.echo(f"[colab] Credential cache: {TOKEN_CONFIG_PATH}")
+    typer.echo(f"[colab] Profile: {state.profile}")
+    typer.echo(f"[colab] Credential cache: {state.token_path}")
 
 
 def version_command():

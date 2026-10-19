@@ -51,25 +51,29 @@ PUBLIC_SCOPES = [
 ]
 
 
-TOKEN_CONFIG_PATH = os.path.expanduser("~/.config/colab-cli/token.json")
+TOKEN_CONFIG_PATH = os.path.join(
+    os.path.expanduser(os.environ.get("COLAB_CLI_CONFIG_ROOT", "~/.config/colab-cli")),
+    "token.json",
+)
 OAUTH_REVOCATION_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 
 
-def clear_oauth_credentials() -> bool:
+def clear_oauth_credentials(token_path: Optional[str] = None) -> bool:
     """Remove the locally cached OAuth2 credentials.
 
     Returns True when a token file existed and was removed, or False when the
     user was already logged out. This intentionally does not touch ADC, which
     is managed externally by Google Cloud tooling/environment configuration.
     """
+    token_path = token_path or TOKEN_CONFIG_PATH
     try:
-        os.remove(TOKEN_CONFIG_PATH)
+        os.remove(token_path)
         return True
     except FileNotFoundError:
         return False
 
 
-def revoke_oauth_credentials() -> bool:
+def revoke_oauth_credentials(token_path: Optional[str] = None) -> bool:
     """Revoke the cached Google OAuth grant, then remove the local token.
 
     Returns False when no local OAuth credentials exist. When credentials are
@@ -82,11 +86,12 @@ def revoke_oauth_credentials() -> bool:
     import urllib.parse
     import urllib.request
 
-    if not os.path.exists(TOKEN_CONFIG_PATH):
+    token_path = token_path or TOKEN_CONFIG_PATH
+    if not os.path.exists(token_path):
         return False
 
     try:
-        with open(TOKEN_CONFIG_PATH, "r", encoding="utf-8") as token_file:
+        with open(token_path, "r", encoding="utf-8") as token_file:
             token_data = json.load(token_file)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Could not read the cached OAuth credentials: {e}") from e
@@ -115,7 +120,7 @@ def revoke_oauth_credentials() -> bool:
     except urllib.error.URLError as e:
         raise RuntimeError(f"Google OAuth revocation request failed: {e.reason}") from e
 
-    clear_oauth_credentials()
+    clear_oauth_credentials(token_path)
     return True
 
 # Remote copy-paste OAuth flow.
@@ -159,7 +164,9 @@ def _run_remote_flow(client_config: dict) -> Credentials:
     return flow.credentials
 
 
-def _get_google_auth_credentials(config_path: str) -> Credentials:
+def _get_google_auth_credentials(
+    config_path: str, token_path: Optional[str] = None
+) -> Credentials:
     """
     Retrieves credentials using standard public OAuth2 flow.
     """
@@ -184,16 +191,18 @@ def _get_google_auth_credentials(config_path: str) -> Credentials:
 
     creds = None
 
-    # Ensure config directory exists for the token file
-    os.makedirs(os.path.dirname(TOKEN_CONFIG_PATH), exist_ok=True)
+    token_path = token_path or TOKEN_CONFIG_PATH
 
-    if os.path.exists(TOKEN_CONFIG_PATH):
+    # Ensure config directory exists for the token file
+    os.makedirs(os.path.dirname(token_path), exist_ok=True)
+
+    if os.path.exists(token_path):
         try:
             creds = Credentials.from_authorized_user_file(
-                TOKEN_CONFIG_PATH, PUBLIC_SCOPES
+                token_path, PUBLIC_SCOPES
             )
         except Exception as e:
-            logger.warning(f"Failed to load token from {TOKEN_CONFIG_PATH}: {e}")
+            logger.warning(f"Failed to load token from {token_path}: {e}")
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -208,10 +217,10 @@ def _get_google_auth_credentials(config_path: str) -> Credentials:
 
         # Save the credentials for the next run
         try:
-            with open(TOKEN_CONFIG_PATH, "w") as token_file:
+            with open(token_path, "w") as token_file:
                 token_file.write(creds.to_json())
         except Exception as e:
-            logger.error(f"Failed to save token to {TOKEN_CONFIG_PATH}: {e}")
+            logger.error(f"Failed to save token to {token_path}: {e}")
 
     return creds
 
@@ -287,6 +296,7 @@ def _get_adc_credentials() -> Credentials:
 def get_credentials(
     config_path: Optional[str] = None,
     provider: AuthProvider = AuthProvider.OAUTH2,
+    token_path: Optional[str] = None,
 ) -> requests.AuthorizedSession:
     """Unified entry point for retrieving an authorized session.
 
@@ -298,7 +308,7 @@ def get_credentials(
     if provider == AuthProvider.OAUTH2:
         if not config_path:
             config_path = os.path.expanduser("~/.colab-cli-oauth-config.json")
-        creds = _get_google_auth_credentials(config_path)
+        creds = _get_google_auth_credentials(config_path, token_path=token_path)
     elif provider == AuthProvider.ADC:
         creds = _get_adc_credentials()
     else:

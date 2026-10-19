@@ -363,6 +363,8 @@ def run_command(
     )
 
     state.store.add(s)
+    if s.accelerator == "T4":
+        state.t4_usage.start(s.endpoint, session_name=s.name)
     state.history.log_event(
         name,
         "session_created",
@@ -480,6 +482,8 @@ def _teardown(name: str, s: SessionState, *, reason: str) -> None:
 
     try:
         state.client.unassign(s.endpoint)
+        if s.accelerator == "T4":
+            state.t4_usage.stop(s.endpoint)
     except Exception:
         pass
 

@@ -13,8 +13,11 @@
 # limitations under the License.
 
 import typer
+from typing_extensions import Annotated
 
 from colab_cli.consumption import format_consumption_status
+from colab_cli.profiles import list_profiles
+from colab_cli.t4_usage import T4UsageTracker, format_duration
 
 
 def usage():
@@ -33,5 +36,42 @@ def usage():
     typer.echo(format_consumption_status(result))
 
 
+def _print_t4_snapshot(profile: str, snapshot: dict):
+    typer.echo(f"Profile: {profile}")
+    typer.echo(f"Tracking day: {snapshot['date']} (local time)")
+    typer.echo(f"Daily T4 allowance: {format_duration(snapshot['allowance_seconds'])}")
+    typer.echo(f"Tracked T4 time used: {format_duration(snapshot['used_seconds'])}")
+    typer.echo(f"Tracked T4 time remaining: {format_duration(snapshot['remaining_seconds'])}")
+    typer.echo(f"Active tracked T4 sessions: {snapshot['active_t4_sessions']}")
+
+
+def t4_usage(
+    all_profiles: Annotated[
+        bool,
+        typer.Option("--all", help="Show the local T4 tracker for every profile."),
+    ] = False,
+):
+    """Show locally tracked T4 allocation time against the 4h30m daily budget."""
+    from colab_cli.common import state
+
+    if not all_profiles:
+        try:
+            assignments = state.client.list_assignments()
+            state.t4_usage.reconcile(assignments)
+        except Exception:
+            # The local tracker remains useful offline; do not turn a display
+            # command into a login prompt/error solely for reconciliation.
+            pass
+        _print_t4_snapshot(state.profile, state.t4_usage.snapshot())
+        return
+
+    profiles = list_profiles()
+    for index, profile in enumerate(profiles):
+        if index:
+            typer.echo("")
+        _print_t4_snapshot(profile, T4UsageTracker(profile).snapshot())
+
+
 def register(app: typer.Typer):
     app.command()(usage)
+    app.command(name="t4-usage")(t4_usage)

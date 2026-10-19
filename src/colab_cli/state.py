@@ -88,7 +88,10 @@ class _LockedFileStore:
 class SettingsStore(_LockedFileStore):
     def __init__(self, path: Optional[str] = None):
         if not path:
-            path = os.path.expanduser("~/.config/colab-cli/settings.json")
+            root = os.path.expanduser(
+                os.environ.get("COLAB_CLI_CONFIG_ROOT", "~/.config/colab-cli")
+            )
+            path = os.path.join(root, "settings.json")
         super().__init__(path)
 
     def load(self) -> Settings:
@@ -112,7 +115,10 @@ class SettingsStore(_LockedFileStore):
 class StateStore(_LockedFileStore):
     def __init__(self, path: Optional[str] = None):
         if not path:
-            path = os.path.expanduser("~/.config/colab-cli/sessions.json")
+            root = os.path.expanduser(
+                os.environ.get("COLAB_CLI_CONFIG_ROOT", "~/.config/colab-cli")
+            )
+            path = os.path.join(root, "sessions.json")
         super().__init__(path)
 
     def _load_raw(self, f) -> Dict[str, SessionState]:
